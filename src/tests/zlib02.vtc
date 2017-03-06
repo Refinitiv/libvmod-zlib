@@ -1,0 +1,39 @@
+varnishtest "ZLIB: edge tests"
+
+#start server
+server s1 {
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 0
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 0
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == req.http.content-length
+        txresp -status 200
+} -start
+
+#start varnish instance
+varnish v1 -vcl+backend {
+    import zlib from "${vmod_topbuild}/src/.libs/libvmod_zlib.so" ;
+    include "${vmod_topbuild}/src/tests/zlib.vcl";
+} -start
+
+#start client
+client c1 {
+        txreq -req POST -body {}
+        rxresp
+        expect resp.status == 200
+        txreq -req POST -gzipbody {}
+        rxresp
+        expect resp.status == 200
+        txreq -req POST
+        rxresp
+        expect resp.status == 200
+} -run
+ 

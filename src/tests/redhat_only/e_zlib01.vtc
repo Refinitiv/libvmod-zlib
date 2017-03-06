@@ -1,0 +1,56 @@
+varnishtest "ZLIB: test correct handling of chunked requests"
+
+server s1 {
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+} -start
+
+#start varnish instance
+varnish v1 -vcl+backend {
+    import zlib from "${vmod_topbuild}/src/.libs/libvmod_zlib.so" ;
+
+    sub vcl_recv {
+            if (zlib.unzip_request() != 0){
+                    error 400 "Bad request";
+            }
+    }
+ 
+} -start
+
+#start client
+client c1 {
+        txreq -req POST -nolen \
+                -hdr "Content-Encoding: gzip" \
+                -hdr "Transfer-Encoding: Chunked"
+        send "14\r\n"
+                # An empty gzip file:
+                sendhex "1f8b"
+                sendhex "08"
+                sendhex "00"
+                sendhex "00000000"
+                sendhex "00"
+                sendhex "03"
+                sendhex "0300"
+                sendhex "00000000"
+                sendhex "00000000"
+        send "\r\n"
+
+        rxresp
+        expect resp.status == 400
+} -run
+
+client c2 {
+        txreq -req POST -gzipbody {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+} -run
+ 

@@ -1,0 +1,453 @@
+varnishtest "ZLIB: Several gzip/nogzip requests through multiple clients/servers"
+
+#start server
+server s1 {
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+} -start
+
+server s2 {
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+} -start
+
+server s3 {
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+} -start
+
+server s4 {
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+} -start
+
+server s5 {
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+
+        rxreq
+        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-length == 210
+        txresp -status 200
+
+} -start
+
+#start varnish instance
+varnish v1 -vcl+backend {
+    import zlib from "${vmod_topbuild}/src/.libs/libvmod_zlib.so" ;
+    include "${vmod_topbuild}/src/tests/zlib.vcl";
+
+    sub vcl_recv {
+            if (req.url == "/1") {
+                    set req.backend = s1;
+            }
+            if (req.url == "/2") {
+                    set req.backend = s2;
+            }
+            if (req.url == "/3") {
+                    set req.backend = s3;
+            }
+            if (req.url == "/4") {
+                    set req.backend = s4;
+            }
+            if (req.url == "/5") {
+                    set req.backend = s5;
+            }
+    }
+ 
+} -start
+
+#start client
+client c1 {
+        txreq -url /1 -req POST -gzipbody {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -url /1 -req POST -body {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -url /1 -req POST -gzipbody {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -url /1 -req POST -body {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -url /1 -req POST -gzipbody {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+} -run
+
+#start client
+client c2 {
+        txreq -url /2 -req POST -gzipbody {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -url /2 -req POST -body {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -url /2 -req POST -gzipbody {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -url /2 -req POST -body {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -url /2 -req POST -gzipbody {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+} -run
+
+#start client
+client c3 {
+        txreq -url /3 -req POST -gzipbody {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -url /3 -req POST -body {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -url /3 -req POST -gzipbody {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -url /3 -req POST -body {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -url /3 -req POST -gzipbody {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+} -run
+
+#start client
+client c4 {
+        txreq -url /4 -req POST -gzipbody {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -url /4 -req POST -body {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -url /4 -req POST -gzipbody {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -url /4 -req POST -body {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -url /4 -req POST -gzipbody {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+} -run
+
+#start client
+client c5 {
+        txreq -url /5 -req POST -gzipbody {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -url /5 -req POST -body {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -url /5 -req POST -gzipbody {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -url /5 -req POST -body {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -url /5 -req POST -gzipbody {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header>
+<userIdentity/>
+</Header>
+<Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body>
+</Envelope>}
+        rxresp
+        expect resp.status == 200
+} -run

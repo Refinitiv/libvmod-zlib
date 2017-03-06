@@ -1,0 +1,18 @@
+varnishtest "ZLIB: test correct handling of multiple content-encoding"
+
+server s1 {
+} -start
+
+#start varnish instance
+varnish v1 -vcl+backend {
+    import zlib from "${vmod_topbuild}/src/.libs/libvmod_zlib.so" ;
+    include "${vmod_topbuild}/src/tests/zlib.vcl";
+} -start
+
+#start client
+client c1 {
+        txreq -req POST -hdr "Content-Encoding: gzip,deflate" -gzipbody {xxxx}
+        rxresp
+        expect resp.status == 400
+} -run
+ 
