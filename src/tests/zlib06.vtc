@@ -1,4 +1,4 @@
-varnishtest "ZLIB: One big compressed request with higer workspace_client"
+varnishtest "ZLIB: One big compressed request with lower gzip_buffer"
 
 server s1 {
         loop 10 {
@@ -8,7 +8,7 @@ server s1 {
         }
 } -start
 
-varnish v1 -arg "-p workspace_client=128k" -vcl+backend {
+varnish v1 -arg "-p gzip_buffer=4k" -vcl+backend {
     import ${vmod_zlib};
 
     sub vcl_recv {

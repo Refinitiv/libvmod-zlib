@@ -36,3 +36,8 @@ In your VCL you could then use this vmod along the following lines::
                     return (synth(400, "can't uncompress request's body"));
                 }
         }
+
+Note that VMOD allocates the size of `gzip_buffer` bytes in the
+`workspace_client`. In order to work properly, you must increase the default
+size of `workspace_client` which is too low by default. (`gzip_buffer` and
+`http_req_size` are already taking the full space).
