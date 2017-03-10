@@ -43,12 +43,11 @@
 
 #define READ_BUFFER_SIZE 8192
 
-#define VMOD_ZLIB_DEBUG
 #ifdef VMOD_ZLIB_DEBUG
 #include <syslog.h>
 #define DEBUG(x) x
 #else
-#define DEBUG(x) (void);
+#define DEBUG(x) (void)NULL
 #endif
 
 static const struct gethdr_s VGC_HDR_REQ_Content_2d_Length =
