@@ -34,12 +34,11 @@ CONTENTS
 
 .. _func_unzip_request:
 
-unzip_request
--------------
+INT unzip_request(PRIV_TOP)
+---------------------------
 
-::
-
-	INT unzip_request()
+Prototype
+	INT unzip_request(PRIV_TOP)
 
 Uncompress the request's body, if Content-Encoding: gzip.
 

@@ -1,30 +1,27 @@
 varnishtest "ZLIB: request uncompressing. Test Content-Encoding: gzip"
 
-shell {
-        cp ${vmod_topbuild}/src/tests/zlib.vcl ${tmpdir}
-}
-
-#start server
 server s1 {
         rxreq
-        expect req.http.content-encoding == req.http.content-encoding
+        expect req.http.content-encoding == <undef>
         expect req.http.content-length == 210
         txresp -status 200
 
         rxreq
-        expect req.http.content-encoding == req.http.content-encoding
-        expect req.http.content-length == 210
+        expect req.http.content-encoding == <undef>
+        expect req.http.content-length == 211
         txresp -status 200
 } -start
 
-#start varnish instance
 varnish v1 -vcl+backend {
-    import zlib from "${vmod_topbuild}/src/.libs/libvmod_zlib.so" ;
-    include "${vmod_topbuild}/src/tests/zlib.vcl";
-    sub vcl_recv {return (pass);}
+    import ${vmod_zlib};
+
+    sub vcl_recv {
+            if (zlib.unzip_request() == -1) {
+                    return (synth(400, "can't uncompress request's body"));
+            }
+    }
 } -start
 
-#start client
 client c1 {
         txreq -req POST -gzipbody {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
 <Header>
@@ -41,7 +38,7 @@ client c1 {
 <userIdentity/>
 </Header>
 <Body>
-<Test xmlns="http://schemas.reuters.com/mytest"/>
+<Test xmlns="http://schemas.reuters.com/mytest2"/>
 </Body>
 </Envelope>}
         rxresp

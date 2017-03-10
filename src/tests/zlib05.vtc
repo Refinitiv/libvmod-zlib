@@ -1,6 +1,5 @@
 varnishtest "ZLIB: Several gzip/nogzip requests through multiple clients/servers"
 
-#start server
 server s1 {
         rxreq
         expect req.http.content-encoding == req.http.content-encoding
@@ -137,10 +136,14 @@ server s5 {
 
 } -start
 
-#start varnish instance
 varnish v1 -vcl+backend {
-    import zlib from "${vmod_topbuild}/src/.libs/libvmod_zlib.so" ;
-    include "${vmod_topbuild}/src/tests/zlib.vcl";
+    import ${vmod_zlib};
+
+    sub vcl_recv {
+            if(zlib.unzip_request() == -1) {
+                    return (synth(400, "can't uncompress request's body"));
+            }
+    }
 
     sub vcl_recv {
             if (req.url == "/1") {
@@ -162,7 +165,6 @@ varnish v1 -vcl+backend {
  
 } -start
 
-#start client
 client c1 {
         txreq -url /1 -req POST -gzipbody {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
 <Header>

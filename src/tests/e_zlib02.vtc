@@ -3,13 +3,16 @@ varnishtest "ZLIB: test correct handling of bad content-encoding"
 server s1 {
 } -start
 
-#start varnish instance
 varnish v1 -vcl+backend {
-    import zlib from "${vmod_topbuild}/src/.libs/libvmod_zlib.so" ;
-    include "${vmod_topbuild}/src/tests/zlib.vcl";
+    import ${vmod_zlib};
+
+    sub vcl_recv {
+            if (zlib.unzip_request() == -1) {
+                    return (synth(400, "can't uncompress request's body"));
+            }
+    }
 } -start
 
-#start client
 client c1 {
         txreq -req POST -hdr "Content-Encoding: leningrad" -gzipbody {xxxx}
         rxresp
