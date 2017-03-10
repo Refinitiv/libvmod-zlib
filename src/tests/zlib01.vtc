@@ -12,7 +12,7 @@ server s1 {
         txresp -status 200
 } -start
 
-varnish v1 -vcl+backend {
+varnish v1 -arg "-p gzip_buffer=2k" -vcl+backend {
     import ${vmod_zlib};
 
     sub vcl_recv {

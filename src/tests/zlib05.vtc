@@ -147,19 +147,19 @@ varnish v1 -vcl+backend {
 
     sub vcl_recv {
             if (req.url == "/1") {
-                    set req.backend = s1;
+                    set req.backend_hint = s1;
             }
             if (req.url == "/2") {
-                    set req.backend = s2;
+                    set req.backend_hint = s2;
             }
             if (req.url == "/3") {
-                    set req.backend = s3;
+                    set req.backend_hint = s3;
             }
             if (req.url == "/4") {
-                    set req.backend = s4;
+                    set req.backend_hint = s4;
             }
             if (req.url == "/5") {
-                    set req.backend = s5;
+                    set req.backend_hint = s5;
             }
     }
  

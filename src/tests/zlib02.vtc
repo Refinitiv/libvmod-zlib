@@ -8,7 +8,7 @@ server s1 {
 
         rxreq
         expect req.http.content-encoding == <undef>
-        expect req.http.content-length == 0
+        expect req.http.content-length == <undef>
         txresp -status 200
 
         rxreq
