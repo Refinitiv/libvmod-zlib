@@ -30,6 +30,6 @@ $Module zlib 3 Zlib VMOD
 DESCRIPTION
 ===========
 
-$Function INT unzip_request()
+$Function INT unzip_request(PRIV_TOP)
 
 Uncompress the request's body, if Content-Encoding: gzip.

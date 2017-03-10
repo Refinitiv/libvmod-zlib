@@ -34,205 +34,256 @@
 #include "cache/cache.h"
 #include "lib/libvgz/vgz.h"
 #include "vcc_zlib_if.h"
+#include "vsb.h"
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
-#include <syslog.h>
 
-enum ce_type {
-	CE_NONE = 0,
-	CE_GZIP = 1,
-	CE_DEFLATE =  2,
-	CE_UNKNOWN = 3
-};
+#define READ_BUFFER_SIZE 8192
 
-#define ALLOC_BUFFER(ptr, l)				\
-	do {						\
-		(ptr) = calloc(sizeof(*(ptr)) * l, 1);	\
-		XXXAN(ptr);				\
-	} while (0)
+#define VMOD_ZLIB_DEBUG
+#ifdef VMOD_ZLIB_DEBUG
+#define DEBUG(x) x
+#else
+#define DEBUG(x) (void);
+#endif
 
+static const struct gethdr_s VGC_HDR_REQ_Content_2d_Length =
+    { HDR_REQ, "\017Content-Length:"};
 
-#define REALLOC_BUFFER(ptr, size, newsize)				\
-	do {								\
-		void* newptr = realloc(ptr, newsize);			\
-		XXXAN(newptr);						\
-		if (newptr != (ptr)) {					\
-			memset(newptr + size, 0, newsize - size);	\
-			(ptr) = newptr;					\
-		}							\
-		size = newsize;						\
-	} while (0)
-
-#define FREE_BUFFER(x)					\
-	do {						\
-		if (x)					\
-			free(x);			\
-		(x) = NULL;				\
-	} while (0)
-
-#define HTC_FD(htc) (*((htc)->rfd))
-
-int
-read_and_uncompress(VRT_CTX, z_stream *compression_stream, struct http_conn *htc, ssize_t cl)
+static void
+clean(void *priv)
 {
-	// Read body and uncompress
-	ssize_t gzbuf_size;
-	char *gzbuf;
-	char *out_buf = NULL;
-	ssize_t out_len = 0;
-	ssize_t out_size = cl * 4;
+	struct vsb	*vsb;
 
-	CHECK_OBJ_NOTNULL(htc, HTTP_CONN_MAGIC);
-	gzbuf_size = (cl > cache_param->gzip_buffer) ? cache_param->gzip_buffer : cl;
-	gzbuf = WS_Alloc(ctx->ws, gzbuf_size);
-	AN(gzbuf);
-	ALLOC_BUFFER(out_buf, out_size);
-
-	while (cl > 0) {
-		// Read initial buffer
-		ssize_t gzbytes_to_read = (cl > gzbuf_size) ? gzbuf_size : cl;
-		ssize_t gzbytes_read = read(HTC_FD(htc), gzbuf, gzbytes_to_read);
-		if (gzbytes_read <= 0) {
-			VSLb(ctx->vsl, SLT_Error, "unzip_request: can't read varnish socket (%d)", errno);
-			FREE_BUFFER(out_buf);
-			return (-1);
-		}
-		cl -= gzbytes_read;
-
-		compression_stream->next_in = (Bytef *)gzbuf;
-		compression_stream->avail_in = gzbytes_read;
-		while (compression_stream->avail_in > 0) {
-			if (out_size - out_len == 0) {
-				REALLOC_BUFFER(out_buf, out_size, out_size * 2);
-			}
-
-			compression_stream->next_out = (Bytef *)(out_buf + out_len);
-			compression_stream->avail_out = out_size - out_len;
-
-			Bytef *before = compression_stream->next_out;
-			int err = inflate(compression_stream, 0);
-			if (err != Z_OK && err != Z_STREAM_END) {
-				VSLb(ctx->vsl, SLT_Error, "unzip_request: inflate read buffer (%s)", compression_stream->msg);
-				FREE_BUFFER(out_buf);
-				return (-1);
-			}
-			unsigned len = compression_stream->next_out - before;
-			out_len += len;
-			VSLb(ctx->vsl, SLT_Debug, "unzip_request: inflate (%d bytes)", len);
-		}
+	if (priv) {
+		CAST_OBJ_NOTNULL(vsb, *(struct vsb**)priv, VSB_MAGIC);
+		VSB_destroy(&vsb);
 	}
-
-	// Write uncompressed buffer to Varnish pipeline
-	if (htc->pipeline_b != NULL) {
-		unsigned pipesize;
-		pipesize = htc->pipeline_e - htc->pipeline_b;
-		if (out_size - out_len < pipesize) {
-			REALLOC_BUFFER(out_buf, out_size, out_size + pipesize);
-		}
-		memcpy(out_buf + out_len, htc->pipeline_b, pipesize);
-		out_len += pipesize;
-	}
-	htc->pipeline_b = out_buf;
-	htc->pipeline_e = out_buf + out_len;
-
-	// req headers will be used for sending body to backend
-	VRT_SetHdr(ctx, HDR_REQ, H_Content_Encoding, vrt_magic_string_unset);
-	VRT_SetHdr(ctx, HDR_REQ, H_Content_Length, VRT_INT_string(ctx, out_len), vrt_magic_string_end);
-	return (0);
 }
 
-int http_content_encoding(struct http *http)
+static struct vsb**
+VSB_get(VRT_CTX, struct vmod_priv *priv)
+{
+	struct vsb **pvsb;
+
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+	AN(priv);
+	if(priv->priv == NULL) {
+		priv->priv = malloc(sizeof(pvsb));
+		pvsb = (struct vsb **)priv->priv;
+		*pvsb = VSB_new_auto();
+		priv->free = clean;
+	}
+	return (pvsb);
+}
+
+static int
+fill_pipeline(VRT_CTX, struct vsb** pvsb, struct http_conn *htc, ssize_t len)
+{
+	struct vsb	*vsb;
+	char		*buffer;
+	ssize_t		l;
+	ssize_t		i;
+
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+	CAST_OBJ_NOTNULL(vsb, *pvsb, VSB_MAGIC);
+	CHECK_OBJ_NOTNULL(htc, HTTP_CONN_MAGIC);
+	AN(len > 0);
+	l = 0;
+	if (htc->pipeline_b) {
+		l = htc->pipeline_e - htc->pipeline_b;
+		AN(l > 0);
+		if (l >= len) {
+			return (l);
+		}
+		AZ(VSB_bcat(vsb, htc->pipeline_b, l));
+		len -= l;
+	}
+
+	i = 0;
+	buffer = WS_Alloc(ctx->ws, READ_BUFFER_SIZE);
+	while (len > 0) {
+		i = read(htc->fd, buffer, READ_BUFFER_SIZE);
+		if (i < 0) {
+			if (htc->pipeline_b == htc->pipeline_e) {
+				htc->pipeline_b = NULL;
+				htc->pipeline_e = NULL;
+			}
+			// XXX: VTCP_Assert(i); // but also: EAGAIN
+			VSLb(ctx->req->htc->vfc->wrk->vsl, SLT_FetchError,
+			    "%s", strerror(errno));
+			ctx->req->req_body_status = REQ_BODY_FAIL;
+			return (i);
+		}
+		AZ(VSB_bcat(vsb, buffer, i));
+		len -= i;
+	}
+	VSB_finish(vsb);
+	AN(VSB_len(vsb) > 0);
+	htc->pipeline_b = VSB_data(vsb);
+	htc->pipeline_e = htc->pipeline_b + VSB_len(vsb);
+	return (VSB_len(vsb));
+}
+
+/* -------------------------------------------------------------------------------------/
+   Decompress one part
+   Note that we are using libzlib (from varnish) and not zlib (from system)
+*/
+ssize_t uncompress_pipeline(VRT_CTX, struct vsb** pvsb, struct http_conn *htc)
+{
+	struct vsb	*body;
+	struct vsb	*output;
+	z_stream	*stream;
+	char		*buffer;
+	int		err;
+
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+
+	stream = WS_Alloc(ctx->ws, sizeof(*stream));
+	XXXAN(stream);
+	if (inflateInit2(stream, 31) != Z_OK) {
+		VSLb(ctx->vsl, SLT_Error, "zlib: can't run inflateInit2");
+		return (-1);
+	}
+
+	output = VSB_new_auto();
+	buffer = WS_Alloc(ctx->ws, cache_param->gzip_buffer);
+
+	stream->next_in = (Bytef *)htc->pipeline_b;
+	stream->avail_in = htc->pipeline_e - htc->pipeline_b;
+	while (stream->avail_in > 0) {
+		stream->next_out = (Bytef *)buffer;
+		stream->avail_out = cache_param->gzip_buffer;
+
+		DEBUG(VSLb(ctx->vsl, SLT_Debug, "zlib: inflateb in (%lu/%u) out (%lu/%u)",
+			(uintptr_t)stream->next_in, stream->avail_in,
+			(uintptr_t)stream->next_out, stream->avail_out));
+		err = inflate(stream, Z_SYNC_FLUSH);
+		DEBUG(VSLb(ctx->vsl, SLT_Debug, "zlib: inflatef in (%lu/%u) out (%lu/%u)",
+			(uintptr_t)stream->next_in, stream->avail_in,
+			(uintptr_t)stream->next_out, stream->avail_out));
+		if (err != Z_OK && err != Z_STREAM_END) {
+			VSLb(ctx->vsl, SLT_Error, "zlib: inflate read buffer (%d/%s)", err, stream->msg);
+			inflateEnd(stream);
+			VSB_destroy(&output);
+			return (-1);
+		}
+		AZ(VSB_bcat(output, buffer, (char*)stream->next_out - buffer));
+	}
+	inflateEnd(stream);
+	VSB_finish(output);
+
+	// We got a complete uncompressed buffer
+	// We need to write it back into pipeline
+	if (*pvsb) {
+		CAST_OBJ_NOTNULL(body, *pvsb, VSB_MAGIC);
+		//AN(htc->pipeline_b == VSB_data(body));
+		VSB_destroy(pvsb);
+	}
+	*pvsb = output;
+	htc->pipeline_b = VSB_data(output);
+	htc->pipeline_e = htc->pipeline_b + VSB_len(output);
+	return (VSB_len(output));
+}
+
+ssize_t validate_request(VRT_CTX)
 {
 	const char *ptr;
-	if (http_GetHdr(http, H_Content_Encoding, &ptr))
-	{
-		if (strstr(ptr, "gzip") != 0)
-		{
-			return CE_GZIP;
+	ssize_t cl;
+
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+	if (ctx->method != VCL_MET_RECV) {
+		/* Can be called only in vcl_recv.
+		** vcl_backend_fetch is a bad place since std.cache is in recv
+		*/
+		VSLb(ctx->vsl, SLT_Error, "zlib: must be called in vcl_recv");
+		return (-1);
+	}
+
+	// Content-Encoding handling
+	if (http_GetHdr(ctx->http_req, H_Content_Encoding, &ptr)) {
+		if (strstr(ptr, "deflate") != 0) {
+			VSLb(ctx->vsl, SLT_Error, "zlib: unsupported Content-Encoding");
+			return (-1);
 		}
-		else if (strstr(ptr, "deflate") != 0)
-		{
-			return CE_DEFLATE;
-		}
-		else
-		{
-			return CE_UNKNOWN;
+		else if (strstr(ptr, "gzip") == 0) {
+			VSLb(ctx->vsl, SLT_Error, "zlib: unsupported Content-Encoding");
+			return (-1);
 		}
 	}
-	return CE_NONE;
+	else {
+		VSLb(ctx->vsl, SLT_Debug, "zlib: nothing to do");
+		return (0);
+	}
+
+	// Transfer-Encoding handling
+	if (http_GetHdr(ctx->http_req, H_Transfer_Encoding, &ptr)) {
+		VSLb(ctx->vsl, SLT_Error, "zlib: unsupported Transfer-Encoding");
+		return (-1);
+	}
+	// Get Content-Length
+	cl = http_GetContentLength(ctx->http_req);
+	if (cl <= 0) {
+		VSLb(ctx->vsl, SLT_Debug, "zlib: no Content-Length");
+		return (cl);
+	}
+	return (cl);
 }
 
 /*--------------------------------------------------------------------
  * Unzip of a request / response
  * Does not manage chunks.
  * Returns :
- * 0 if success
+ * 0 if success or no Content-Length
  * -1 if failed:
  * - unknown Content-Encoding
- * - no Content-Length found
  * - Transfer-Encoding present
  * - uncompress error
  */
 VCL_INT __match_proto__(td_zlib_unzip_request)
-vmod_unzip_request(VRT_CTX)
+	vmod_unzip_request(VRT_CTX, struct vmod_priv *priv)
 {
-	const char* ptr;
-	ssize_t cl;
+	void		*virgin;
+	struct vsb	**pvsb;
+	ssize_t		cl;
+	ssize_t		ret;
 
-	if (ctx->method != VCL_MET_RECV) {
-		/* Can be called only in vcl_recv.
-		** vcl_backend_fetch is a bad place since std.cache is in recv
-		*/
-		VSLb(ctx->vsl, SLT_Error, "unzip_request must be called in vcl_recv");
-		return (-1);
-	}
+	virgin = WS_Snapshot(ctx->ws);
 
-	// Content-Encoding handling
-	enum ce_type ce;
-	ce = http_content_encoding(ctx->http_req);
-	if (ce == CE_NONE) {
-		VSLb(ctx->vsl, SLT_Debug, "unzip_request: nothing to do");
-		return (0);
-	}
-	else if (ce != CE_GZIP) {
-		VSLb(ctx->vsl, SLT_Error, "unzip_request unsupported Content-Encoding");
-		return (-1);
-	}
-
-	// Transfer-Encoding handling
-	if (http_GetHdr(ctx->http_req, H_Transfer_Encoding, &ptr)) {
-		VSLb(ctx->vsl, SLT_Error, "unzip_request unsupported Transfer-Encoding");
-		return (-1);
-	}
-	// Get Content-Length
-	cl = http_GetContentLength(ctx->http_req);
+	cl = validate_request(ctx);
 	if (cl <= 0) {
-		VSLb(ctx->vsl, SLT_Error, "unzip_request: no Content-Length");
+		// can be 0 (no body) or -1 (wrong req)
+		return (cl);
+	}
+
+	pvsb = VSB_get(ctx, priv);
+	ret = fill_pipeline(ctx, pvsb, ctx->req->htc, cl);
+	if (ret <= 0) {
+		VSLb(ctx->vsl, SLT_Error, "zlib: read error (%ld)", ret);
+		WS_Reset(ctx->ws, virgin);
 		return (-1);
 	}
-
-	//Initialize zlib stream
-	z_stream *compression_stream;
-	compression_stream = WS_Alloc(ctx->ws, sizeof(*compression_stream));
-
-	// we are using libzlib (from varnish) and not zlib (from system)
-	int sts = inflateInit2(compression_stream, 31);
-	if (sts != Z_OK) {
-		VSLb(ctx->vsl, SLT_Error, "unzip_request: can't run inflateInit2");
-		WS_Release(ctx->ws, 0);
+	AN(ret == cl);
+	cl = uncompress_pipeline(ctx, pvsb, ctx->req->htc);
+	if (cl < 0) {
+		VSLb(ctx->vsl, SLT_Error, "zlib: can't uncompress pipeline");
+		WS_Reset(ctx->ws, virgin);
 		return (-1);
 	}
-
-	int ret = read_and_uncompress(ctx, compression_stream, ctx->req->htc, cl);
-
-	// clear zlib
-	inflateEnd(compression_stream);
-	if (ret >= 0){
-		VSLb(ctx->vsl, SLT_Debug, "unzip_request: completed with success");
+	else if (cl == 0) {
+		http_Unset(ctx->req->http, H_Content_Length);
 	}
-	return ret;
+	else {
+		VRT_SetHdr(ctx, &VGC_HDR_REQ_Content_2d_Length, VRT_INT_string(ctx, cl),
+		    vrt_magic_string_end);
+	}
+	ctx->req->htc->content_length = cl;
+	http_Unset(ctx->req->http, H_Content_Encoding);
+
+	WS_Reset(ctx->ws, virgin);
+	VSLb(ctx->vsl, SLT_Debug, "zlib: completed with success");
+	return (0);
 }
-
