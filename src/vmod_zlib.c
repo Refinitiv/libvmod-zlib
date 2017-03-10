@@ -45,6 +45,7 @@
 
 #define VMOD_ZLIB_DEBUG
 #ifdef VMOD_ZLIB_DEBUG
+#include <syslog.h>
 #define DEBUG(x) x
 #else
 #define DEBUG(x) (void);
@@ -56,11 +57,16 @@ static const struct gethdr_s VGC_HDR_REQ_Content_2d_Length =
 static void
 clean(void *priv)
 {
+	struct vsb	**pvsb;
 	struct vsb	*vsb;
 
 	if (priv) {
-		CAST_OBJ_NOTNULL(vsb, *(struct vsb**)priv, VSB_MAGIC);
+		pvsb = (struct vsb **)priv;
+		CAST_OBJ_NOTNULL(vsb, *pvsb, VSB_MAGIC);
+		DEBUG(syslog(LOG_INFO, "zlib: destroy vsb %lu", (uintptr_t)vsb));
+		DEBUG(syslog(LOG_INFO, "zlib: free %lu", (uintptr_t)pvsb));
 		VSB_destroy(&vsb);
+		free(pvsb);
 	}
 }
 
@@ -75,6 +81,8 @@ VSB_get(VRT_CTX, struct vmod_priv *priv)
 		priv->priv = malloc(sizeof(pvsb));
 		pvsb = (struct vsb **)priv->priv;
 		*pvsb = VSB_new_auto();
+		DEBUG(syslog(LOG_INFO, "zlib: malloc %lu", (uintptr_t)pvsb));
+		DEBUG(syslog(LOG_INFO, "zlib: new_auto vsb %lu", (uintptr_t)*pvsb));
 		priv->free = clean;
 	}
 	return (pvsb);
@@ -105,6 +113,7 @@ fill_pipeline(VRT_CTX, struct vsb** pvsb, struct http_conn *htc, ssize_t len)
 
 	i = 0;
 	buffer = WS_Alloc(ctx->ws, READ_BUFFER_SIZE);
+	XXXAN(buffer);
 	while (len > 0) {
 		i = read(htc->fd, buffer, READ_BUFFER_SIZE);
 		if (i < 0) {
@@ -116,16 +125,30 @@ fill_pipeline(VRT_CTX, struct vsb** pvsb, struct http_conn *htc, ssize_t len)
 			VSLb(ctx->req->htc->vfc->wrk->vsl, SLT_FetchError,
 			    "%s", strerror(errno));
 			ctx->req->req_body_status = REQ_BODY_FAIL;
+			WS_Reset(ctx->ws, buffer);
 			return (i);
 		}
 		AZ(VSB_bcat(vsb, buffer, i));
 		len -= i;
 	}
+	WS_Reset(ctx->ws, buffer);
 	VSB_finish(vsb);
 	AN(VSB_len(vsb) > 0);
 	htc->pipeline_b = VSB_data(vsb);
 	htc->pipeline_e = htc->pipeline_b + VSB_len(vsb);
 	return (VSB_len(vsb));
+}
+
+void
+log_stream(VRT_CTX, z_stream *stream) {
+	VSC_C_main->n_gunzip++;
+	VSLb(ctx->vsl, SLT_Gzip, "%s %jd %jd %jd %jd %jd",
+	    "U D -",
+	    (intmax_t)stream->total_in,
+	    (intmax_t)stream->total_out,
+	    (intmax_t)stream->start_bit,
+	    (intmax_t)stream->last_bit,
+	    (intmax_t)stream->stop_bit);
 }
 
 /* -------------------------------------------------------------------------------------/
@@ -136,51 +159,58 @@ ssize_t uncompress_pipeline(VRT_CTX, struct vsb** pvsb, struct http_conn *htc)
 {
 	struct vsb	*body;
 	struct vsb	*output;
-	z_stream	*stream;
+	z_stream	stream;
 	char		*buffer;
 	int		err;
 
 	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
 
-	stream = WS_Alloc(ctx->ws, sizeof(*stream));
-	XXXAN(stream);
-	if (inflateInit2(stream, 31) != Z_OK) {
+	memset(&stream, 0, sizeof(stream));
+	if (inflateInit2(&stream, 31) != Z_OK) {
 		VSLb(ctx->vsl, SLT_Error, "zlib: can't run inflateInit2");
 		return (-1);
 	}
 
 	output = VSB_new_auto();
+	DEBUG(syslog(LOG_INFO, "zlib: new_auto vsb %lu", (uintptr_t)output));
+	DEBUG(syslog(LOG_INFO, "zlib: workspace free %ld", ctx->ws->e - ctx->ws->f));
 	buffer = WS_Alloc(ctx->ws, cache_param->gzip_buffer);
+	XXXAN(buffer);
 
-	stream->next_in = (Bytef *)htc->pipeline_b;
-	stream->avail_in = htc->pipeline_e - htc->pipeline_b;
-	while (stream->avail_in > 0) {
-		stream->next_out = (Bytef *)buffer;
-		stream->avail_out = cache_param->gzip_buffer;
+	stream.next_in = (Bytef *)htc->pipeline_b;
+	stream.avail_in = htc->pipeline_e - htc->pipeline_b;
+	while (stream.avail_in > 0) {
+		stream.next_out = (Bytef *)buffer;
+		stream.avail_out = cache_param->gzip_buffer;
 
 		DEBUG(VSLb(ctx->vsl, SLT_Debug, "zlib: inflateb in (%lu/%u) out (%lu/%u)",
-			(uintptr_t)stream->next_in, stream->avail_in,
-			(uintptr_t)stream->next_out, stream->avail_out));
-		err = inflate(stream, Z_SYNC_FLUSH);
+			(uintptr_t)stream.next_in, stream.avail_in,
+			(uintptr_t)stream.next_out, stream.avail_out));
+		err = inflate(&stream, Z_SYNC_FLUSH);
 		DEBUG(VSLb(ctx->vsl, SLT_Debug, "zlib: inflatef in (%lu/%u) out (%lu/%u)",
-			(uintptr_t)stream->next_in, stream->avail_in,
-			(uintptr_t)stream->next_out, stream->avail_out));
+			(uintptr_t)stream.next_in, stream.avail_in,
+			(uintptr_t)stream.next_out, stream.avail_out));
 		if (err != Z_OK && err != Z_STREAM_END) {
-			VSLb(ctx->vsl, SLT_Error, "zlib: inflate read buffer (%d/%s)", err, stream->msg);
-			inflateEnd(stream);
+			VSLb(ctx->vsl, SLT_Gzip, "zlib: inflate read buffer (%d/%s)", err, stream.msg);
+			log_stream(ctx, &stream);
+			inflateEnd(&stream);
+			DEBUG(syslog(LOG_INFO, "zlib: destroy vsb %lu", (uintptr_t)output));
 			VSB_destroy(&output);
+			WS_Reset(ctx->ws, buffer);
 			return (-1);
 		}
-		AZ(VSB_bcat(output, buffer, (char*)stream->next_out - buffer));
+		AZ(VSB_bcat(output, buffer, (char*)stream.next_out - buffer));
 	}
-	inflateEnd(stream);
+	log_stream(ctx, &stream);
+	inflateEnd(&stream);
 	VSB_finish(output);
+	WS_Reset(ctx->ws, buffer);
 
 	// We got a complete uncompressed buffer
 	// We need to write it back into pipeline
 	if (*pvsb) {
 		CAST_OBJ_NOTNULL(body, *pvsb, VSB_MAGIC);
-		//AN(htc->pipeline_b == VSB_data(body));
+		DEBUG(syslog(LOG_INFO, "zlib: destroy vsb %lu", (uintptr_t)*pvsb));
 		VSB_destroy(pvsb);
 	}
 	*pvsb = output;
@@ -246,12 +276,9 @@ ssize_t validate_request(VRT_CTX)
 VCL_INT __match_proto__(td_zlib_unzip_request)
 	vmod_unzip_request(VRT_CTX, struct vmod_priv *priv)
 {
-	void		*virgin;
 	struct vsb	**pvsb;
 	ssize_t		cl;
 	ssize_t		ret;
-
-	virgin = WS_Snapshot(ctx->ws);
 
 	cl = validate_request(ctx);
 	if (cl <= 0) {
@@ -263,27 +290,29 @@ VCL_INT __match_proto__(td_zlib_unzip_request)
 	ret = fill_pipeline(ctx, pvsb, ctx->req->htc, cl);
 	if (ret <= 0) {
 		VSLb(ctx->vsl, SLT_Error, "zlib: read error (%ld)", ret);
-		WS_Reset(ctx->ws, virgin);
 		return (-1);
 	}
 	AN(ret == cl);
 	cl = uncompress_pipeline(ctx, pvsb, ctx->req->htc);
 	if (cl < 0) {
 		VSLb(ctx->vsl, SLT_Error, "zlib: can't uncompress pipeline");
-		WS_Reset(ctx->ws, virgin);
 		return (-1);
 	}
 	else if (cl == 0) {
 		http_Unset(ctx->req->http, H_Content_Length);
+		ctx->req->req_body_status = REQ_BODY_NONE;
+		ctx->req->htc->body_status = BS_EOF;
+		ctx->req->htc->content_length = -1;
 	}
 	else {
 		VRT_SetHdr(ctx, &VGC_HDR_REQ_Content_2d_Length, VRT_INT_string(ctx, cl),
 		    vrt_magic_string_end);
+		ctx->req->req_body_status = REQ_BODY_WITH_LEN;
+		ctx->req->htc->body_status = BS_LENGTH;
+		ctx->req->htc->content_length = cl;
 	}
-	ctx->req->htc->content_length = cl;
 	http_Unset(ctx->req->http, H_Content_Encoding);
 
-	WS_Reset(ctx->ws, virgin);
 	VSLb(ctx->vsl, SLT_Debug, "zlib: completed with success");
 	return (0);
 }
