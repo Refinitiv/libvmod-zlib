@@ -91,7 +91,7 @@ static int
 fill_pipeline(VRT_CTX, struct vsb** pvsb, struct http_conn *htc, ssize_t len)
 {
 	struct vsb	*vsb;
-	char		*buffer;
+	char		buffer[READ_BUFFER_SIZE];
 	ssize_t		l;
 	ssize_t		i;
 
@@ -111,8 +111,6 @@ fill_pipeline(VRT_CTX, struct vsb** pvsb, struct http_conn *htc, ssize_t len)
 	}
 
 	i = 0;
-	buffer = WS_Alloc(ctx->ws, READ_BUFFER_SIZE);
-	XXXAN(buffer);
 	while (len > 0) {
 		i = read(htc->fd, buffer, READ_BUFFER_SIZE);
 		if (i < 0) {
@@ -124,13 +122,11 @@ fill_pipeline(VRT_CTX, struct vsb** pvsb, struct http_conn *htc, ssize_t len)
 			VSLb(ctx->req->htc->vfc->wrk->vsl, SLT_FetchError,
 			    "%s", strerror(errno));
 			ctx->req->req_body_status = REQ_BODY_FAIL;
-			WS_Reset(ctx->ws, buffer);
 			return (i);
 		}
 		AZ(VSB_bcat(vsb, buffer, i));
 		len -= i;
 	}
-	WS_Reset(ctx->ws, buffer);
 	VSB_finish(vsb);
 	AN(VSB_len(vsb) > 0);
 	htc->pipeline_b = VSB_data(vsb);
