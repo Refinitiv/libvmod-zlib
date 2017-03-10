@@ -216,6 +216,10 @@ ssize_t uncompress_pipeline(VRT_CTX, struct vsb** pvsb, struct http_conn *htc)
 	*pvsb = output;
 	htc->pipeline_b = VSB_data(output);
 	htc->pipeline_e = htc->pipeline_b + VSB_len(output);
+	if (htc->pipeline_b == htc->pipeline_e) {
+		htc->pipeline_b = NULL;
+		htc->pipeline_e = NULL;
+	}
 	return (VSB_len(output));
 }
 
