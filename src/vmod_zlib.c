@@ -190,7 +190,7 @@ ssize_t uncompress_pipeline(VRT_CTX, struct vsb** pvsb, struct http_conn *htc)
 			(uintptr_t)stream.next_in, stream.avail_in,
 			(uintptr_t)stream.next_out, stream.avail_out));
 		if (err != Z_OK && err != Z_STREAM_END) {
-			VSLb(ctx->vsl, SLT_Gzip, "zlib: inflate read buffer (%d/%s)", err, stream.msg);
+			VSLb(ctx->vsl, SLT_Error, "zlib: inflate read buffer (%d/%s)", err, stream.msg);
 			log_stream(ctx, &stream);
 			inflateEnd(&stream);
 			DEBUG(syslog(LOG_INFO, "zlib: destroy vsb %lu", (uintptr_t)output));
@@ -248,7 +248,7 @@ ssize_t validate_request(VRT_CTX)
 		}
 	}
 	else {
-		VSLb(ctx->vsl, SLT_Debug, "zlib: nothing to do");
+		VSLb(ctx->vsl, SLT_Gzip, "zlib: nothing to do");
 		return (0);
 	}
 
@@ -260,7 +260,7 @@ ssize_t validate_request(VRT_CTX)
 	// Get Content-Length
 	cl = http_GetContentLength(ctx->http_req);
 	if (cl <= 0) {
-		VSLb(ctx->vsl, SLT_Debug, "zlib: no Content-Length");
+		VSLb(ctx->vsl, SLT_Gzip, "zlib: no Content-Length");
 		return (cl);
 	}
 	return (cl);
@@ -316,6 +316,6 @@ VCL_INT __match_proto__(td_zlib_unzip_request)
 	}
 	http_Unset(ctx->req->http, H_Content_Encoding);
 
-	VSLb(ctx->vsl, SLT_Debug, "zlib: completed with success");
+	DEBUG(VSLb(ctx->vsl, SLT_Debug, "zlib: completed with success"));
 	return (0);
 }
