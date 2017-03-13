@@ -1,6 +1,8 @@
 ============
 vmod-zlib
 ============
+.. image:: https://travis-ci.org/thomsonreuters/libvmod-zlib.svg?branch=master
+    :target: https://travis-ci.org/thomsonreuters/libvmod-zlib
 
 SYNOPSIS
 ========
