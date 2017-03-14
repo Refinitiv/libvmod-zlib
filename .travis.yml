@@ -17,6 +17,7 @@ before_install:
   - ./configure --prefix=/usr
   - make -sj32
   - sudo make install
+  - export VARNISHSRC=$PWD
   - popd
 
 before_script:
