@@ -86,6 +86,10 @@ VSB_get(VRT_CTX, struct vmod_priv *priv)
 		DEBUG(syslog(LOG_INFO, "zlib: new_auto vsb %lu", (uintptr_t)*pvsb));
 		priv->free = clean;
 	}
+	else {
+		pvsb = (struct vsb **)priv->priv;
+		CHECK_OBJ_NOTNULL(*pvsb, VSB_MAGIC);
+	}
 	return (pvsb);
 }
 
