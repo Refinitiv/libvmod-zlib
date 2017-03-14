@@ -31,6 +31,16 @@ m4_ifndef([VARNISH_PREREQ], AC_MSG_ERROR([Need varnish.m4 -- see README.rst]))
 VARNISH_PREREQ([4.1], [5.0.0])
 VARNISH_VMODS([zlib])
 
+AC_SUBST([VARNISHSRC])
+AC_ARG_VAR([VARNISHSRC], [path to Varnish source tree])
+AS_IF([test "x${VARNISHSRC}" = "x" ], AC_MSG_FAILURE([\$VARNISHSRC is not set]), AC_MSG_RESULT([yes]))
+AC_CHECK_FILE([$VARNISHSRC/include/vrt.h],
+        [],
+        [AC_MSG_FAILURE([\$VARNISHSRC "$VARNISHSRC" is not a Varnish source directory])]
+)
+
+# as long as we still need crc32 from libvgz from the Varnish source tree
+
 VMOD_TESTS="$(cd $srcdir/src && echo tests/*.vtc)"
 AC_SUBST(VMOD_TESTS)
 
