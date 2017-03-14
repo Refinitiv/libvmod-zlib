@@ -32,6 +32,8 @@
 #include "vcl.h"
 #include "vrt.h"
 #include "cache/cache.h"
+
+/* we use libvgz to have {start,stop,last}_bit */
 #include "lib/libvgz/vgz.h"
 #include "vcc_zlib_if.h"
 #include "vsb.h"
