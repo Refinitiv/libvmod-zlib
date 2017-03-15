@@ -9,9 +9,13 @@ addons:
     packages:
     - python-docutils
 
+env:
+  - VARNISH_VERSION=4.1.5
+  - VARNISH_VERSION=5.0.0
+
 before_install:
   - set -e
-  - wget https://repo.varnish-cache.org/source/varnish-5.0.0.tar.gz
+  - wget https://repo.varnish-cache.org/source/varnish-$VARNISH_VERSION}.tar.gz
   - tar -zxf varnish-*.tar.gz
   - pushd varnish-*/
   - ./configure --prefix=/usr
