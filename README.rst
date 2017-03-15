@@ -34,7 +34,7 @@ In your VCL you could then use this vmod along the following lines::
         import zlib;
 
         sub vcl_recv {
-                if (zlib.unzip_request() == -1) {
+                if (zlib.unzip_request() < 0) {
                     return (synth(400, "can't uncompress request's body"));
                 }
         }
