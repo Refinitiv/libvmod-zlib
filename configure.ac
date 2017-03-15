@@ -39,8 +39,6 @@ AC_CHECK_FILE([$VARNISHSRC/include/vrt.h],
         [AC_MSG_FAILURE([\$VARNISHSRC "$VARNISHSRC" is not a Varnish source directory])]
 )
 
-# as long as we still need crc32 from libvgz from the Varnish source tree
-
 VMOD_TESTS="$(cd $srcdir/src && echo tests/*.vtc)"
 AC_SUBST(VMOD_TESTS)
 
