@@ -36,28 +36,17 @@ else
 fi
 
 # check for varnishapi.m4 in custom paths
-AC_MACROS=""
-
 dataroot=$(pkg-config --variable=datarootdir varnishapi 2>/dev/null)
-if [ ! -z "$dataroot" ] ; then
-    AC_MACROS=" -I ${dataroot}/aclocal ${AC_MACROS}"
-fi
-
-if [ ! -z "$VARNISHSRC" ]; then
-    AC_MACROS=" -I ${VARNISHSRC} ${AC_MACROS}"
-fi
-
-if [ -z "${AC_MACROS}" ]; then
+if [ -z "$dataroot" ] ; then
 	cat >&2 <<'EOF'
-Package varnishapi was not found in the pkg-config search path,
-and environment variable VARNISHSRC is not found.
+Package varnishapi was not found in the pkg-config search path.
 Perhaps you should add the directory containing `varnishapi.pc'
-to the PKG_CONFIG_PATH environment variable, or set VARNISHSRC.
+to the PKG_CONFIG_PATH environment variable
 EOF
 	exit 1
 fi
 set -ex
-aclocal -I m4 ${AC_MACROS}
+aclocal -I m4 -I ${dataroot}/aclocal
 $LIBTOOLIZE --copy --force
 autoheader
 automake --add-missing --copy --foreign
