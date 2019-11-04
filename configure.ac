@@ -1,6 +1,6 @@
 AC_PREREQ([2.63])
 AC_INIT([libvmod-zlib], [1.0], [], [vmod-zlib])
-AC_COPYRIGHT([Copyright (c) 2017 Thomson Reuters])
+AC_COPYRIGHT([Copyright (c) 2019 Refinitiv])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_SRCDIR(src/vmod_zlib.vcc)

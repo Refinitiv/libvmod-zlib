@@ -1,8 +1,8 @@
 ============
 vmod-zlib
 ============
-.. image:: https://travis-ci.org/thomsonreuters/libvmod-zlib.svg?branch=master
-    :target: https://travis-ci.org/thomsonreuters/libvmod-zlib
+.. image:: https://travis-ci.org/Refinitiv/libvmod-zlib.svg?branch=master
+    :target: https://travis-ci.org/Refinitiv/libvmod-zlib
 
 SYNOPSIS
 ========
@@ -43,3 +43,9 @@ Note that VMOD allocates the size of `gzip_buffer` bytes in the
 `workspace_client`. In order to work properly, you must increase the default
 size of `workspace_client` which is too low by default. (`gzip_buffer` and
 `http_req_size` are already taking the full space).
+
+COPYRIGHT
+=========
+This document is licensed under BSD-2-Clause license. See LICENSE for details.
+
+The code was opened by (c) Refinitiv (previously Thomson Reuters).
