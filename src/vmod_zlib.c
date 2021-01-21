@@ -125,8 +125,7 @@ fill_pipeline(VRT_CTX, struct vsb** pvsb, struct http_conn *htc, ssize_t len)
 				htc->pipeline_e = NULL;
 			}
 			// XXX: VTCP_Assert(i); // but also: EAGAIN
-			VSLb(ctx->req->htc->vfc->wrk->vsl, SLT_FetchError,
-			    "%s", strerror(errno));
+			VSLb(ctx->vsl, SLT_FetchError, "%s", strerror(errno));
 			ctx->req->req_body_status = REQ_BODY_FAIL;
 			return (i);
 		}
