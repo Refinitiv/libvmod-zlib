@@ -191,7 +191,7 @@ ssize_t uncompress_pipeline(VRT_CTX, struct vsb** pvsb, struct http_conn *htc)
 		DEBUG(VSLb(ctx->vsl, SLT_Debug, "zlib: inflatef in (%lu/%u) out (%lu/%u)",
 			(uintptr_t)stream.next_in, stream.avail_in,
 			(uintptr_t)stream.next_out, stream.avail_out));
-		if (err != Z_OK && err != Z_STREAM_END) {
+		if ((err != Z_OK && err != Z_STREAM_END) || (err == Z_STREAM_END && stream.avail_in != 0)) {
 			VSLb(ctx->vsl, SLT_Error, "zlib: inflate read buffer (%d/%s)", err, stream.msg);
 			log_stream(ctx, &stream);
 			inflateEnd(&stream);

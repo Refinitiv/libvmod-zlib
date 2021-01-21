@@ -1,0 +1,28 @@
+varnishtest "Test multiple gzip streams handling"
+
+server s1 {
+        rxreq
+        expect req.http.content-encoding == <undef>
+        expect req.http.content-length == 5
+        txresp -status 200
+} -start
+
+varnish v1 -arg "-p gzip_buffer=2k" -vcl+backend {
+    import ${vmod_zlib};
+
+    sub vcl_recv {
+            if (zlib.unzip_request() < 0) {
+                    return (synth(400, "can't uncompress request's body"));
+            }
+    }
+} -start
+
+client c1 {
+        timeout 1
+        txreq -req POST -hdr "Content-Length: 29" -hdr "Content-Encoding: gzip"
+        # 28 characters represent gzipped payload. 29 character is beginning of another stream
+        sendhex "1f 8b 08 00 00 00 00 00 04 03 01 05 00 fa ff 48 65 6c 6c 6f 82 89 d1 f7 05 00 00 00 1f"
+        rxresp
+        # Since multiple streams not supported expected response status is 400
+        expect resp.status == 400
+} -run
